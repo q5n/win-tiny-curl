@@ -70,7 +70,7 @@ if [[ -z "$wolf_source" ]]; then
   exit 1
 fi
 
-common_cppflags="-D_WIN32_WINNT=0x0601 -DWINVER=0x0601"
+common_cppflags="-D_WIN32_WINNT=0x0601 -DWINVER=0x0601 -DWOLFSSL_DES_ECB"
 common_cflags="-Os -flto -ffunction-sections -fdata-sections"
 curl_cflags="$common_cflags -Wno-error=incompatible-pointer-types"
 common_ldflags="-static -static-libgcc -flto -Wl,--gc-sections"
@@ -98,6 +98,8 @@ NM=gcc-nm \
     --enable-static \
     --disable-shared \
     --enable-curl=tiny \
+    --enable-md4 \
+    --enable-des3 \
     --disable-examples \
     --disable-crypttests
 
