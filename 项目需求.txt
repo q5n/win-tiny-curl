@@ -8,3 +8,6 @@ wolfssl源文件：wolfssl-src文件中第1行下载地址：https://github.com/
 编译结果 release：
 tiny-curl-XXX-via-wolfssl-ZZZ-[x64/x86].zip
 含：curl.exe文件和 curl-ca-bundle.crt (源自:https://curl.se/ca/cacert.pem)
+
+
+curl.exe中符号信息、调试信息 要去除

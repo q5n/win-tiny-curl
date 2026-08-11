@@ -1,0 +1,58 @@
+name: Build tiny-curl x64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 x64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            curl
+            unzip
+            zip
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-pkgconf
+
+      - name: Build x64 package
+        shell: msys2 {0}
+        env:
+          TARGET_ARCH: x64
+        run: bash .github/scripts/build.sh
+
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist/${{ env.PACKAGE_NAME }}.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Publish GitHub Release asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = "dist/$env:PACKAGE_NAME.zip"
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $asset --clobber
+          } else {
+            gh release create $env:RELEASE_TAG $asset `
+              --target $env:GITHUB_SHA `
+              --title $env:RELEASE_TITLE `
+              --generate-notes `
+              --latest
+          }
