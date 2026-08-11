@@ -1,4 +1,4 @@
-name: Build tiny-curl x64
+name: Build tiny-curl x64 with Cookies and zlib
 
 on:
   workflow_dispatch:
@@ -25,11 +25,13 @@ jobs:
             zip
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-autotools
+            mingw-w64-x86_64-zlib
 
-      - name: Build x64 package
+      - name: Build x64 Cookies and zlib package
         shell: msys2 {0}
         env:
           TARGET_ARCH: x64
+          BUILD_FLAVOR: cookies-zlib
         run: bash .github/scripts/build.sh
 
       - name: Upload Actions artifact
@@ -49,9 +51,6 @@ jobs:
           if ($assets.Count -ne 1) { throw "Expected one ZIP asset, found $($assets.Count)." }
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            $assetBase = $env:ARTIFACT_NAME
-            gh release delete-asset $env:RELEASE_TAG "$assetBase-cookies.zip" --yes 2> $null
-            gh release delete-asset $env:RELEASE_TAG "$assetBase-no-cookies.zip" --yes 2> $null
             gh release upload $env:RELEASE_TAG $assets --clobber
           } else {
             gh release create $env:RELEASE_TAG $assets `

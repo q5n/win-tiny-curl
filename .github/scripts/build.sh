@@ -130,20 +130,23 @@ log_step "Downloading CA certificate bundle"
 ca_bundle="$work_dir/curl-ca-bundle.crt"
 curl --fail --location --retry 3 --output "$ca_bundle" https://curl.se/ca/cacert.pem
 
-build_tiny_variant() {
-  local variant="$1"
+build_tiny() {
+  local package_suffix="$1"
   local cookie_option="$2"
-  local tiny_source="$work_dir/tiny-curl-$tiny_version-$variant"
-  local package_name="tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH-$variant"
+  local zlib_option="$3"
+  local expect_zlib="$4"
+  local build_label="${package_suffix#-}"
+  local tiny_source="$work_dir/tiny-curl-$tiny_version-${build_label:-default}"
+  local package_name="tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH$package_suffix"
   local package_dir="$work_dir/$package_name"
   local version_output
   local imported_dlls
 
-  log_step "Extracting tiny-curl $tiny_version for $variant variant"
+  log_step "Extracting tiny-curl $tiny_version (${build_label:-default})"
   mkdir -p "$tiny_source"
   tar -xzf "$tiny_archive" -C "$tiny_source" --strip-components=1
 
-  log_step "Configuring tiny-curl $variant variant"
+  log_step "Configuring tiny-curl (${build_label:-default})"
   pushd "$tiny_source"
   if [[ ! -x configure ]]; then
     echo "configure is missing; generating it with buildconf"
@@ -180,11 +183,12 @@ build_tiny_variant() {
       --disable-mqtt \
       --disable-alt-svc \
       --disable-hsts \
+      --disable-unix-sockets \
       --disable-libcurl-option \
-      --without-zlib \
       --without-zstd \
       --without-brotli \
-      "$cookie_option"
+      "$cookie_option" \
+      "$zlib_option"
 
   echo "tiny-curl configure arguments: $(./config.status --config)"
   if ! grep -Eq '^#define HAVE_IOCTLSOCKET_FIONBIO 1' lib/curl_config.h; then
@@ -192,17 +196,22 @@ build_tiny_variant() {
     grep -Ei -A 8 -B 3 'ioctlsocket' config.log >&2 || true
     exit 1
   fi
-  if [[ "$variant" == "no-cookies" ]] && ! grep -Eq '^#define CURL_DISABLE_COOKIES 1' lib/curl_config.h; then
-    echo "ERROR: the no-cookies variant did not disable cookies." >&2
+  if [[ "$cookie_option" == "--disable-cookies" ]]; then
+    if ! grep -Eq '^#define CURL_DISABLE_COOKIES 1' lib/curl_config.h; then
+      echo "ERROR: tiny-curl did not disable cookies." >&2
+      exit 1
+    fi
+  elif grep -Eq '^#define CURL_DISABLE_COOKIES 1' lib/curl_config.h; then
+    echo "ERROR: the Cookies/zlib package unexpectedly disabled cookies." >&2
     exit 1
   fi
 
-  log_step "Compiling tiny-curl $variant variant"
+  log_step "Compiling tiny-curl"
   make -j"$(nproc)" V=1
   strip src/curl.exe
   popd
 
-  log_step "Checking $variant runtime DLL dependencies"
+  log_step "Checking runtime DLL dependencies"
   imported_dlls="$(objdump -p "$tiny_source/src/curl.exe" | sed -n 's/^[[:space:]]*DLL Name: //p')"
   printf 'Imported DLLs:\n%s\n' "$imported_dlls"
   if printf '%s\n' "$imported_dlls" | grep -Eiq '^(libwolfssl|libgcc|libstdc\+\+|libwinpthread|msys-|libzstd|zlib1|libbrotli).*\.dll$'; then
@@ -214,28 +223,53 @@ build_tiny_variant() {
   cp "$tiny_source/src/curl.exe" "$package_dir/curl.exe"
   cp "$ca_bundle" "$package_dir/curl-ca-bundle.crt"
 
-  log_step "Verifying $variant package"
+  log_step "Verifying package"
   version_output="$(cd "$package_dir" && ./curl.exe --version)"
   printf '%s\n' "$version_output"
   if ! printf '%s\n' "$version_output" | grep -Eq '^Protocols: http https$'; then
     echo "ERROR: expected exactly HTTP and HTTPS protocols." >&2
     exit 1
   fi
-  if printf '%s\n' "$version_output" | grep -Eiq 'zlib|zstd|brotli|libz'; then
+  if [[ "$expect_zlib" == "yes" ]]; then
+    if ! printf '%s\n' "$version_output" | grep -Eiq 'zlib/[0-9]'; then
+      echo "ERROR: the Cookies/zlib package did not enable zlib." >&2
+      exit 1
+    fi
+  elif printf '%s\n' "$version_output" | grep -Eiq 'zlib|libz'; then
+    echo "ERROR: the default package unexpectedly enabled zlib." >&2
+    exit 1
+  fi
+  if printf '%s\n' "$version_output" | grep -Eiq 'zstd|brotli'; then
     echo "ERROR: a disabled compression library is still enabled." >&2
     exit 1
   fi
+  if printf '%s\n' "$version_output" | grep -Eq '^Features:.*UnixSockets'; then
+    echo "ERROR: Unix socket support is still enabled." >&2
+    exit 1
+  fi
 
-  log_step "Compressing $variant release package"
+  log_step "Compressing release package"
   (cd "$package_dir" && zip -9 "$workspace_posix/dist/$package_name.zip" curl.exe curl-ca-bundle.crt)
   echo "Output: $workspace_posix/dist/$package_name.zip"
 }
 
-build_tiny_variant "cookies" "--enable-cookies"
-build_tiny_variant "no-cookies" "--disable-cookies"
+case "${BUILD_FLAVOR:-default}" in
+  default)
+    artifact_suffix=""
+    build_tiny "" "--disable-cookies" "--without-zlib" "no"
+    ;;
+  cookies-zlib)
+    artifact_suffix="-cookies-zlib"
+    build_tiny "$artifact_suffix" "--enable-cookies" "--with-zlib" "yes"
+    ;;
+  *)
+    echo "ERROR: unsupported BUILD_FLAVOR: $BUILD_FLAVOR" >&2
+    exit 1
+    ;;
+esac
 
 {
-  echo "ARTIFACT_NAME=tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH"
+  echo "ARTIFACT_NAME=tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH$artifact_suffix"
   echo "RELEASE_TAG=tiny-curl-$tiny_version-wolfssl-$wolf_version"
   echo "RELEASE_TITLE=tiny-curl $tiny_version via wolfSSL $wolf_version"
 } >> "$github_env_posix"

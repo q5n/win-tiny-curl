@@ -46,9 +46,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = Get-ChildItem -Path dist -Filter *.zip | ForEach-Object FullName
-          if ($assets.Count -ne 2) { throw "Expected two ZIP assets, found $($assets.Count)." }
+          if ($assets.Count -ne 1) { throw "Expected one ZIP asset, found $($assets.Count)." }
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
+            $assetBase = $env:ARTIFACT_NAME
+            gh release delete-asset $env:RELEASE_TAG "$assetBase-cookies.zip" --yes 2> $null
+            gh release delete-asset $env:RELEASE_TAG "$assetBase-no-cookies.zip" --yes 2> $null
             gh release upload $env:RELEASE_TAG $assets --clobber
           } else {
             gh release create $env:RELEASE_TAG $assets `
