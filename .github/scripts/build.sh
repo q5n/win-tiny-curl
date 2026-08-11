@@ -14,7 +14,7 @@ trap 'echo "ERROR: build failed at line $LINENO while running: $BASH_COMMAND" >&
 : "${MINGW_CHOST:?MINGW_CHOST is required; run this script in a MinGW MSYS2 shell}"
 
 log_step "Checking required build tools"
-for tool in autoreconf automake libtoolize make gcc cygpath; do
+for tool in autoreconf automake libtoolize make gcc gcc-ar gcc-ranlib gcc-nm cygpath; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "Required build tool is unavailable: $tool" >&2
     exit 1
@@ -71,9 +71,9 @@ if [[ -z "$wolf_source" ]]; then
 fi
 
 common_cppflags="-D_WIN32_WINNT=0x0601 -DWINVER=0x0601"
-common_cflags="-O2 -ffunction-sections -fdata-sections"
+common_cflags="-Os -flto -ffunction-sections -fdata-sections"
 curl_cflags="$common_cflags -Wno-error=incompatible-pointer-types"
-common_ldflags="-static -static-libgcc -Wl,--gc-sections"
+common_ldflags="-static -static-libgcc -flto -Wl,--gc-sections"
 
 echo "wolfSSL source: $wolf_source"
 echo "CPPFLAGS:       $common_cppflags"
@@ -89,12 +89,15 @@ log_step "Configuring wolfSSL"
 CPPFLAGS="$common_cppflags" \
 CFLAGS="$common_cflags" \
 LDFLAGS="$common_ldflags" \
+AR=gcc-ar \
+RANLIB=gcc-ranlib \
+NM=gcc-nm \
   ./configure \
     --host="$MINGW_CHOST" \
     --prefix="$prefix" \
     --enable-static \
     --disable-shared \
-    --enable-curl \
+    --enable-curl=tiny \
     --disable-examples \
     --disable-crypttests
 
@@ -105,80 +108,119 @@ log_step "Installing static wolfSSL"
 make install
 popd
 
-log_step "Extracting tiny-curl $tiny_version"
-tar -xzf "$tiny_archive" -C "$work_dir"
-tiny_source="$(find "$work_dir" -mindepth 1 -maxdepth 1 -type d -name "tiny-curl-$tiny_version*" -print -quit)"
-if [[ -z "$tiny_source" ]]; then
-  echo "The tiny-curl source directory was not found after extraction." >&2
-  exit 1
-fi
+log_step "Downloading CA certificate bundle"
+ca_bundle="$work_dir/curl-ca-bundle.crt"
+curl --fail --location --retry 3 --output "$ca_bundle" https://curl.se/ca/cacert.pem
 
-echo "tiny-curl source: $tiny_source"
+build_tiny_variant() {
+  local variant="$1"
+  local cookie_option="$2"
+  local tiny_source="$work_dir/tiny-curl-$tiny_version-$variant"
+  local package_name="tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH-$variant"
+  local package_dir="$work_dir/$package_name"
+  local version_output
+  local imported_dlls
 
-log_step "Configuring tiny-curl with wolfSSL"
-pushd "$tiny_source"
-if [[ ! -x configure ]]; then
-  echo "configure is missing; generating it with buildconf"
-  ./buildconf
-fi
-PKG_CONFIG_PATH="$prefix/lib/pkgconfig" \
-CPPFLAGS="$common_cppflags -I$prefix/include" \
-CFLAGS="$curl_cflags" \
-LDFLAGS="$common_ldflags -L$prefix/lib" \
-LIBS="-lws2_32 -lcrypt32 -lbcrypt" \
-  ./configure \
-    --host="$MINGW_CHOST" \
-    --with-wolfssl="$prefix" \
-    --disable-shared \
-    --enable-static \
-    --disable-dependency-tracking \
-    --disable-threaded-resolver
+  log_step "Extracting tiny-curl $tiny_version for $variant variant"
+  mkdir -p "$tiny_source"
+  tar -xzf "$tiny_archive" -C "$tiny_source" --strip-components=1
 
-echo "tiny-curl configure arguments: $(./config.status --config)"
-if ! grep -Eq '^#define HAVE_IOCTLSOCKET_FIONBIO 1' lib/curl_config.h; then
-  echo "ERROR: tiny-curl did not detect Windows ioctlsocket(FIONBIO)." >&2
-  echo "Relevant configure diagnostics:" >&2
-  grep -Ei -A 8 -B 3 'ioctlsocket' config.log >&2 || true
-  exit 1
-fi
-echo "Confirmed Windows non-blocking sockets: HAVE_IOCTLSOCKET_FIONBIO=1"
+  log_step "Configuring tiny-curl $variant variant"
+  pushd "$tiny_source"
+  if [[ ! -x configure ]]; then
+    echo "configure is missing; generating it with buildconf"
+    ./buildconf
+  fi
+  PKG_CONFIG_PATH="$prefix/lib/pkgconfig" \
+  CPPFLAGS="$common_cppflags -I$prefix/include" \
+  CFLAGS="$curl_cflags" \
+  LDFLAGS="$common_ldflags -L$prefix/lib" \
+  LIBS="-lws2_32 -lcrypt32 -lbcrypt" \
+  AR=gcc-ar \
+  RANLIB=gcc-ranlib \
+  NM=gcc-nm \
+    ./configure \
+      --host="$MINGW_CHOST" \
+      --with-wolfssl="$prefix" \
+      --disable-shared \
+      --enable-static \
+      --disable-dependency-tracking \
+      --disable-threaded-resolver \
+      --disable-file \
+      --disable-ftp \
+      --disable-ldap \
+      --disable-ldaps \
+      --disable-rtsp \
+      --disable-dict \
+      --disable-telnet \
+      --disable-tftp \
+      --disable-pop3 \
+      --disable-imap \
+      --disable-smb \
+      --disable-smtp \
+      --disable-gopher \
+      --disable-mqtt \
+      --disable-alt-svc \
+      --disable-hsts \
+      --disable-libcurl-option \
+      --without-zlib \
+      --without-zstd \
+      --without-brotli \
+      "$cookie_option"
 
-log_step "Compiling tiny-curl"
-make -j"$(nproc)" V=1
+  echo "tiny-curl configure arguments: $(./config.status --config)"
+  if ! grep -Eq '^#define HAVE_IOCTLSOCKET_FIONBIO 1' lib/curl_config.h; then
+    echo "ERROR: tiny-curl did not detect Windows ioctlsocket(FIONBIO)." >&2
+    grep -Ei -A 8 -B 3 'ioctlsocket' config.log >&2 || true
+    exit 1
+  fi
+  if [[ "$variant" == "no-cookies" ]] && ! grep -Eq '^#define CURL_DISABLE_COOKIES 1' lib/curl_config.h; then
+    echo "ERROR: the no-cookies variant did not disable cookies." >&2
+    exit 1
+  fi
 
-log_step "Stripping curl.exe"
-strip src/curl.exe
-popd
+  log_step "Compiling tiny-curl $variant variant"
+  make -j"$(nproc)" V=1
+  strip src/curl.exe
+  popd
 
-log_step "Checking curl.exe runtime DLL dependencies"
-imported_dlls="$(objdump -p "$tiny_source/src/curl.exe" | sed -n 's/^[[:space:]]*DLL Name: //p')"
-printf 'Imported DLLs:\n%s\n' "$imported_dlls"
-if printf '%s\n' "$imported_dlls" | grep -Eiq '^(libwolfssl|libgcc|libstdc\+\+|libwinpthread|msys-).*\.dll$'; then
-  echo "Unexpected non-system runtime DLL dependency detected." >&2
-  exit 1
-fi
+  log_step "Checking $variant runtime DLL dependencies"
+  imported_dlls="$(objdump -p "$tiny_source/src/curl.exe" | sed -n 's/^[[:space:]]*DLL Name: //p')"
+  printf 'Imported DLLs:\n%s\n' "$imported_dlls"
+  if printf '%s\n' "$imported_dlls" | grep -Eiq '^(libwolfssl|libgcc|libstdc\+\+|libwinpthread|msys-|libzstd|zlib1|libbrotli).*\.dll$'; then
+    echo "Unexpected non-system runtime DLL dependency detected." >&2
+    exit 1
+  fi
 
-log_step "Creating release package"
-package_name="tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH"
-package_dir="$work_dir/$package_name"
-mkdir -p "$package_dir"
-cp "$tiny_source/src/curl.exe" "$package_dir/curl.exe"
-curl --fail --location --retry 3 --output "$package_dir/curl-ca-bundle.crt" https://curl.se/ca/cacert.pem
+  mkdir -p "$package_dir"
+  cp "$tiny_source/src/curl.exe" "$package_dir/curl.exe"
+  cp "$ca_bundle" "$package_dir/curl-ca-bundle.crt"
 
-echo "Package name:      $package_name"
-echo "Package directory: $package_dir"
+  log_step "Verifying $variant package"
+  version_output="$(cd "$package_dir" && ./curl.exe --version)"
+  printf '%s\n' "$version_output"
+  if ! printf '%s\n' "$version_output" | grep -Eq '^Protocols: http https$'; then
+    echo "ERROR: expected exactly HTTP and HTTPS protocols." >&2
+    exit 1
+  fi
+  if printf '%s\n' "$version_output" | grep -Eiq 'zlib|zstd|brotli|libz'; then
+    echo "ERROR: a disabled compression library is still enabled." >&2
+    exit 1
+  fi
 
-log_step "Verifying generated curl.exe"
-(cd "$package_dir" && ./curl.exe --version)
+  log_step "Compressing $variant release package"
+  (cd "$package_dir" && zip -9 "$workspace_posix/dist/$package_name.zip" curl.exe curl-ca-bundle.crt)
+  echo "Output: $workspace_posix/dist/$package_name.zip"
+}
 
-log_step "Compressing release package"
-(cd "$package_dir" && zip -9 "$workspace_posix/dist/$package_name.zip" curl.exe curl-ca-bundle.crt)
+build_tiny_variant "cookies" "--enable-cookies"
+build_tiny_variant "no-cookies" "--disable-cookies"
 
 {
-  echo "PACKAGE_NAME=$package_name"
+  echo "ARTIFACT_NAME=tiny-curl-$tiny_version-via-wolfssl-$wolf_version-$TARGET_ARCH"
   echo "RELEASE_TAG=tiny-curl-$tiny_version-wolfssl-$wolf_version"
   echo "RELEASE_TITLE=tiny-curl $tiny_version via wolfSSL $wolf_version"
 } >> "$github_env_posix"
 
 log_step "Build completed successfully"
-echo "Output: $workspace_posix/dist/$package_name.zip"
+ls -lh "$workspace_posix"/dist/*.zip
