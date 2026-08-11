@@ -72,11 +72,13 @@ fi
 
 common_cppflags="-D_WIN32_WINNT=0x0601 -DWINVER=0x0601"
 common_cflags="-O2 -ffunction-sections -fdata-sections"
+curl_cflags="$common_cflags -Wno-error=incompatible-pointer-types"
 common_ldflags="-static -static-libgcc -Wl,--gc-sections"
 
 echo "wolfSSL source: $wolf_source"
 echo "CPPFLAGS:       $common_cppflags"
 echo "CFLAGS:         $common_cflags"
+echo "curl CFLAGS:    $curl_cflags"
 echo "LDFLAGS:        $common_ldflags"
 
 log_step "Generating wolfSSL configure script"
@@ -121,7 +123,7 @@ if [[ ! -x configure ]]; then
 fi
 PKG_CONFIG_PATH="$prefix/lib/pkgconfig" \
 CPPFLAGS="$common_cppflags -I$prefix/include" \
-CFLAGS="$common_cflags" \
+CFLAGS="$curl_cflags" \
 LDFLAGS="$common_ldflags -L$prefix/lib" \
 LIBS="-lws2_32 -lcrypt32 -lbcrypt" \
   ./configure \
@@ -136,7 +138,7 @@ echo "tiny-curl configure arguments: $(./config.status --config)"
 if ! grep -Eq '^#define HAVE_IOCTLSOCKET_FIONBIO 1' lib/curl_config.h; then
   echo "ERROR: tiny-curl did not detect Windows ioctlsocket(FIONBIO)." >&2
   echo "Relevant configure diagnostics:" >&2
-  grep -Ei -A 4 -B 2 'native windows|ioctlsocket|winsock2' config.log >&2 || true
+  grep -Ei -A 8 -B 3 'ioctlsocket' config.log >&2 || true
   exit 1
 fi
 echo "Confirmed Windows non-blocking sockets: HAVE_IOCTLSOCKET_FIONBIO=1"
