@@ -3,6 +3,13 @@ set -euo pipefail
 
 : "${TARGET_ARCH:?TARGET_ARCH is required}"
 
+for tool in autoreconf automake libtoolize make gcc; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "Required build tool is unavailable: $tool" >&2
+    exit 1
+  fi
+done
+
 tiny_archive="$(find tiny-curl-src -maxdepth 1 -type f -name 'tiny-curl-*.tar.gz' -print -quit)"
 if [[ -z "$tiny_archive" ]]; then
   echo "No tiny-curl-*.tar.gz archive was found in tiny-curl-src." >&2

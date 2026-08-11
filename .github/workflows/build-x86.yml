@@ -24,7 +24,7 @@ jobs:
             unzip
             zip
             mingw-w64-i686-toolchain
-            mingw-w64-i686-pkgconf
+            mingw-w64-i686-autotools
 
       - name: Build x86 package
         shell: msys2 {0}

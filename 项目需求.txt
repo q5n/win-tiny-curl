@@ -11,3 +11,7 @@ tiny-curl-XXX-via-wolfssl-ZZZ-[x64/x86].zip
 
 
 curl.exe中符号信息、调试信息 要去除
+
+D:\GithubProjects\win-tiny-curl\.tmp\wolfssl-5.9.2-stable 是wolfssl-5.9.2-stable.zip解压后的源文件，
+D:\GithubProjects\win-tiny-curl\.tmp\tiny-curl-8.4.0 是tiny-curl-8.4.0.tar.gz解压后的源文件，
+你研究下，看看我们的workflow build脚本怎么做更合理
