@@ -11,6 +11,7 @@ log_step() {
 trap 'echo "ERROR: build failed at line $LINENO while running: $BASH_COMMAND" >&2' ERR
 
 : "${TARGET_ARCH:?TARGET_ARCH is required}"
+: "${MINGW_CHOST:?MINGW_CHOST is required; run this script in a MinGW MSYS2 shell}"
 
 log_step "Checking required build tools"
 for tool in autoreconf automake libtoolize make gcc cygpath; do
@@ -26,6 +27,7 @@ workspace_posix="$(cygpath -u "$GITHUB_WORKSPACE")"
 github_env_posix="$(cygpath -u "$GITHUB_ENV")"
 
 echo "Target architecture: $TARGET_ARCH"
+echo "MinGW target host:   $MINGW_CHOST"
 echo "Workspace:           $workspace_posix"
 echo "Runner temporary:    $runner_temp_posix"
 
@@ -86,6 +88,7 @@ CPPFLAGS="$common_cppflags" \
 CFLAGS="$common_cflags" \
 LDFLAGS="$common_ldflags" \
   ./configure \
+    --host="$MINGW_CHOST" \
     --prefix="$prefix" \
     --enable-static \
     --disable-shared \
@@ -122,11 +125,21 @@ CFLAGS="$common_cflags" \
 LDFLAGS="$common_ldflags -L$prefix/lib" \
 LIBS="-lws2_32 -lcrypt32 -lbcrypt" \
   ./configure \
+    --host="$MINGW_CHOST" \
     --with-wolfssl="$prefix" \
     --disable-shared \
     --enable-static \
     --disable-dependency-tracking \
     --disable-threaded-resolver
+
+echo "tiny-curl configure arguments: $(./config.status --config)"
+if ! grep -Eq '^#define HAVE_IOCTLSOCKET_FIONBIO 1' lib/curl_config.h; then
+  echo "ERROR: tiny-curl did not detect Windows ioctlsocket(FIONBIO)." >&2
+  echo "Relevant configure diagnostics:" >&2
+  grep -Ei -A 4 -B 2 'native windows|ioctlsocket|winsock2' config.log >&2 || true
+  exit 1
+fi
+echo "Confirmed Windows non-blocking sockets: HAVE_IOCTLSOCKET_FIONBIO=1"
 
 log_step "Compiling tiny-curl"
 make -j"$(nproc)" V=1
