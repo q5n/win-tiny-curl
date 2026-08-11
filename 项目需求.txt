@@ -1,0 +1,10 @@
+这个项目要 利用GitHub Actions workflow的windows msys2环境将tiny-curl编译成
+windows x64和x86版本, 要求能兼容win7
+编译结果是基本无依赖的静态单exe（可依赖windows核心dll）
+
+tiny-curl源文件：tiny-curl-src文件夹下 tiny-curl-XXX.tar.gz
+wolfssl源文件：wolfssl-src文件中第1行下载地址：https://github.com/wolfSSL/wolfssl/archive/refs/tags/vZZZ-stable.zip
+
+编译结果：
+tiny-curl-XXX-via-wolfssl-ZZZ-[x64/x86].zip
+含：curl.exe文件和 curl-ca-bundle.crt (源自:https://curl.se/ca/cacert.pem)
