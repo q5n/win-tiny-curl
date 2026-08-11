@@ -119,7 +119,7 @@ for symbol in \
   wolfSSL_DES_set_odd_parity \
   wolfSSL_DES_set_key_unchecked \
   wolfSSL_DES_ecb_encrypt; do
-  if ! gcc-nm "$prefix/lib/libwolfssl.a" | grep -Eq "[[:space:]]${symbol}$"; then
+  if ! gcc-nm "$prefix/lib/libwolfssl.a" | grep -Eq "[[:space:]]_?${symbol}$"; then
     echo "ERROR: wolfSSL static library is missing required symbol: $symbol" >&2
     exit 1
   fi
