@@ -260,7 +260,7 @@ case "${BUILD_FLAVOR:-default}" in
     ;;
   cookies-zlib)
     artifact_suffix="-cookies-zlib"
-    build_tiny "$artifact_suffix" "--enable-cookies" "--with-zlib" "yes"
+    build_tiny "$artifact_suffix" "--enable-cookies" "--with-zlib=$prefix" "yes"
     ;;
   *)
     echo "ERROR: unsupported BUILD_FLAVOR: $BUILD_FLAVOR" >&2
