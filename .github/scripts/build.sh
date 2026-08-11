@@ -98,6 +98,7 @@ NM=gcc-nm \
     --enable-static \
     --disable-shared \
     --enable-curl=tiny \
+    --enable-opensslextra \
     --enable-md4 \
     --enable-des3 \
     --disable-examples \
@@ -109,6 +110,21 @@ make -j"$(nproc)"
 log_step "Installing static wolfSSL"
 make install
 popd
+
+log_step "Verifying wolfSSL NTLM compatibility symbols"
+for symbol in \
+  wolfSSL_MD4_Init \
+  wolfSSL_MD4_Update \
+  wolfSSL_MD4_Final \
+  wolfSSL_DES_set_odd_parity \
+  wolfSSL_DES_set_key_unchecked \
+  wolfSSL_DES_ecb_encrypt; do
+  if ! gcc-nm "$prefix/lib/libwolfssl.a" | grep -Eq "[[:space:]]${symbol}$"; then
+    echo "ERROR: wolfSSL static library is missing required symbol: $symbol" >&2
+    exit 1
+  fi
+  echo "  found: $symbol"
+done
 
 log_step "Downloading CA certificate bundle"
 ca_bundle="$work_dir/curl-ca-bundle.crt"
