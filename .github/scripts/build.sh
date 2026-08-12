@@ -141,6 +141,7 @@ build_tiny() {
   local package_dir="$work_dir/$package_name"
   local version_output
   local imported_dlls
+  local static_zlib
 
   log_step "Extracting tiny-curl $tiny_version (${build_label:-default})"
   mkdir -p "$tiny_source"
@@ -151,6 +152,18 @@ build_tiny() {
   if [[ ! -x configure ]]; then
     echo "configure is missing; generating it with buildconf"
     ./buildconf
+  fi
+  if [[ "$expect_zlib" == "yes" ]]; then
+    static_zlib="$(gcc -print-file-name=libz.a)"
+    if [[ "$static_zlib" == "libz.a" || ! -f "$static_zlib" ]]; then
+      echo "ERROR: the MinGW static zlib archive (libz.a) was not found." >&2
+      exit 1
+    fi
+    # Put the real static archive ahead of MSYS2's zlib import library.  Merely
+    # using -static is not sufficient here because libtool can switch back to
+    # dynamic lookup while composing curl.exe.
+    cp "$static_zlib" "$prefix/lib/libz.a"
+    echo "Static zlib archive: $static_zlib"
   fi
   PKG_CONFIG_PATH="$prefix/lib/pkgconfig" \
   CPPFLAGS="$common_cppflags -I$prefix/include" \

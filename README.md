@@ -1,328 +1,235 @@
 # win-tiny-curl
 
-Build static Windows x86 and x64 binaries of **tiny-curl** with **wolfSSL** using **GitHub Actions**, **MSYS2**, and **MinGW**.
+Build lightweight, portable Windows x86 and x64 binaries of **tiny-curl** with **wolfSSL**, using GitHub Actions, MSYS2, and MinGW.
 
-The goal of this project is to provide lightweight, portable Windows builds of tiny-curl that are compatible with **Windows 7 and later** and do not require third-party runtime DLLs.
+The builds target **Windows 7 and later**, use HTTP/HTTPS only, and avoid third-party runtime DLL dependencies.
 
-## Features
-
-* Windows **x86** and **x64** builds
-* Windows 7 compatibility target
-* wolfSSL used as the TLS backend
-* static linking where practical
-* no external MinGW or wolfSSL runtime DLLs
-* CA certificate bundle included
-* automated builds through GitHub Actions
-* package names include the tiny-curl version, wolfSSL version, and target architecture
-
-## Current Versions
-
-The versions currently used by this project are:
+## Current versions
 
 ```text
 tiny-curl: 8.4.0
 wolfSSL:   5.9.2
 ```
 
-These versions may be updated in future releases.
+The tiny-curl source archive is stored in `src/`. The wolfSSL source URL is read from `wolfssl-src` and downloaded during each build.
 
-The tiny-curl source archive is stored under:
+## Release packages
 
-```text
-src/
-└── tiny-curl-8.4.0.tar.gz
-```
+Four packages can be produced independently:
 
-wolfSSL is downloaded during the build using the version configured by the GitHub Actions workflow.
+| Package | Architecture | Cookies | zlib / `--compressed` |
+| --- | --- | --- | --- |
+| `tiny-curl-8.4.0-via-wolfssl-5.9.2-x64.zip` | x64 | No | No |
+| `tiny-curl-8.4.0-via-wolfssl-5.9.2-x86.zip` | x86 | No | No |
+| `tiny-curl-8.4.0-via-wolfssl-5.9.2-x64-cookies-zlib.zip` | x64 | Yes | Yes, statically linked |
+| `tiny-curl-8.4.0-via-wolfssl-5.9.2-x86-cookies-zlib.zip` | x86 | Yes | Yes, statically linked |
 
-## Release Packages
-
-Each build produces separate x86 and x64 ZIP archives.
-
-With the current versions, the output files are:
-
-```text
-tiny-curl-8.4.0-via-wolfssl-5.9.2-x64.zip
-tiny-curl-8.4.0-via-wolfssl-5.9.2-x86.zip
-```
-
-Each ZIP archive contains:
+Every ZIP contains:
 
 ```text
 curl.exe
 curl-ca-bundle.crt
 ```
 
-For example:
+The default package deliberately has no feature suffix. The optional package uses the `-cookies-zlib` suffix.
 
-```text
-tiny-curl-8.4.0-via-wolfssl-5.9.2-x64.zip
-├── curl.exe
-└── curl-ca-bundle.crt
-```
+## Supported functionality
 
-## Package Naming
+All builds provide:
 
-The package naming convention is:
+- HTTP and HTTPS only
+- wolfSSL as the TLS backend
+- NTLM support
+- verbose curl error output
+- large-file and thread-safe support
+- a CA certificate bundle downloaded from curl.se during the build
 
-```text
-tiny-curl-<tiny-curl-version>-via-wolfssl-<wolfssl-version>-<arch>.zip
-```
+The build disables:
 
-For example:
+- all protocols other than HTTP and HTTPS
+- Alt-Svc
+- HSTS
+- Unix domain sockets
+- the `--libcurl` command-line option
+- the threaded resolver
+- zstd and Brotli
 
-```text
-tiny-curl-8.4.0-via-wolfssl-5.9.2-x64.zip
-tiny-curl-8.4.0-via-wolfssl-5.9.2-x86.zip
-```
+The default package additionally disables Cookies and zlib. The `cookies-zlib` package enables Cookies and zlib, including the `--compressed` option.
 
-If either tiny-curl or wolfSSL is upgraded, the corresponding version in the package name changes accordingly.
+Proxy support is retained.
 
-For example:
+## Static linking
 
-```text
-tiny-curl-8.5.0-via-wolfssl-5.9.2-x64.zip
-```
+wolfSSL is built as a static library. The Cookies/zlib package also links zlib statically.
 
-or:
-
-```text
-tiny-curl-8.4.0-via-wolfssl-5.9.3-x64.zip
-```
-
-This makes it possible to identify the exact tiny-curl and wolfSSL versions used to produce a binary directly from the archive name.
-
-## Build Environment
-
-Builds are performed automatically by GitHub Actions on Windows using MSYS2 and MinGW.
-
-The build process is roughly:
-
-```text
-GitHub Actions
-      |
-      +-- Windows runner
-      |
-      +-- MSYS2
-      |
-      +-- MinGW x64 / x86
-      |
-      +-- extract tiny-curl source
-      |
-      +-- download configured wolfSSL version
-      |
-      +-- build wolfSSL statically
-      |
-      +-- build tiny-curl against wolfSSL
-      |
-      +-- verify curl.exe dependencies
-      |
-      +-- add curl-ca-bundle.crt
-      |
-      `-- create ZIP packages
-```
-
-## Architectures
-
-Two Windows architectures are built:
-
-| Package suffix | Architecture  |
-| -------------- | ------------- |
-| `x64`          | 64-bit x86-64 |
-| `x86`          | 32-bit x86    |
-
-Example output:
-
-```text
-dist/
-├── tiny-curl-8.4.0-via-wolfssl-5.9.2-x64.zip
-└── tiny-curl-8.4.0-via-wolfssl-5.9.2-x86.zip
-```
-
-## Static Build
-
-The goal is for `curl.exe` to be as self-contained as practical.
-
-The generated executable should not require separately distributed runtime DLLs such as:
+The build checks the PE import table and fails if `curl.exe` imports third-party runtime libraries such as:
 
 ```text
 libwolfssl.dll
-libgcc_s_seh-1.dll
-libgcc_s_sjlj-1.dll
-libwinpthread-1.dll
-libstdc++-6.dll
+zlib1.dll
+libzstd.dll
+libbrotli*.dll
+libgcc*.dll
+libstdc++*.dll
+libwinpthread*.dll
+msys-*.dll
 ```
 
-Dependencies on standard Windows system DLLs are expected.
+Dependencies on Windows system DLLs such as `KERNEL32.dll`, `WS2_32.dll`, `CRYPT32.dll`, and `BCRYPT.dll` are expected.
+
+## GitHub Actions workflows
+
+All workflows are **manual only** (`workflow_dispatch`). There are no push, pull-request, tag, or scheduled triggers.
+
+| Workflow | Output |
+| --- | --- |
+| `.github/workflows/build-x64.yml` | Default x64 package |
+| `.github/workflows/build-x86.yml` | Default x86 package |
+| `.github/workflows/build-x64-cookies-zlib.yml` | x64 Cookies + static zlib package |
+| `.github/workflows/build-x86-cookies-zlib.yml` | x86 Cookies + static zlib package |
+
+The default workflows do not install zlib. The Cookies/zlib workflows install the architecture-specific MinGW zlib package:
+
+```text
+mingw-w64-x86_64-zlib
+mingw-w64-i686-zlib
+```
+
+All four workflows use the shared `.github/scripts/build.sh` script. The optional workflows select their build through:
+
+```text
+BUILD_FLAVOR=cookies-zlib
+```
+
+wolfSSL is compiled once per workflow run and then reused by the selected tiny-curl build.
+
+## GitHub Releases
+
+Each successful workflow run uploads its ZIP as both a GitHub Actions artifact and a GitHub Release asset.
+
+The Release tag format is:
+
+```text
+tiny-curl-<tiny-curl-version>-wolfssl-<wolfssl-version>
+```
 
 For example:
 
 ```text
-KERNEL32.dll
-WS2_32.dll
-ADVAPI32.dll
-CRYPT32.dll
+tiny-curl-8.4.0-wolfssl-5.9.2
 ```
 
-The exact set of Windows system DLLs may differ between x86 and x64 builds.
+If the Release already exists, the workflow uploads the selected asset with `--clobber`, safely replacing an asset with the same filename. The default workflows also remove obsolete `-cookies.zip` and `-no-cookies.zip` assets created by the earlier package layout.
 
-## CA Certificate Bundle
+Because x86, x64, default, and Cookies/zlib builds are separate manual workflows, run each desired workflow to populate all four assets in the Release.
 
-Each release package includes:
+## Build details
+
+The build uses size-oriented compiler and linker settings, including `-Os`, LTO, function/data sections, garbage collection of unused sections, and stripping of the final executable.
+
+wolfSSL is configured with tiny-curl support plus the OpenSSL compatibility interfaces required by tiny-curl NTLM. MD4 and DES compatibility symbols are verified before tiny-curl is built. The verification accepts both x64 symbols and the leading-underscore COFF symbols generated by 32-bit MinGW.
+
+The Windows API target is set to:
 
 ```text
-curl-ca-bundle.crt
+_WIN32_WINNT=0x0601
+WINVER=0x0601
 ```
 
-This file is distributed alongside `curl.exe` for HTTPS certificate verification.
-
-The intended extracted layout is:
-
-```text
-tiny-curl/
-├── curl.exe
-└── curl-ca-bundle.crt
-```
-
-## Windows 7 Compatibility
-
-Windows 7 compatibility is an explicit target of this project.
-
-The build configuration aims to avoid dependencies on APIs and runtime components that require newer Windows versions.
-
-Both x86 and x64 binaries are intended to run on:
-
-```text
-Windows 7+
-```
-
-Compatibility should be verified whenever the compiler, tiny-curl version, wolfSSL version, or build configuration changes.
-
-## GitHub Actions
-
-The build workflow is located under:
-
-```text
-.github/workflows/
-```
-
-The workflow is responsible for:
-
-1. Setting up MSYS2
-2. Installing the required MinGW toolchains
-3. Extracting the configured tiny-curl source archive from `src/`
-4. Downloading the configured wolfSSL version
-5. Building wolfSSL as a static library
-6. Building tiny-curl against wolfSSL
-7. Producing x86 and x64 `curl.exe` binaries
-8. Checking runtime DLL dependencies
-9. Adding `curl-ca-bundle.crt`
-10. Creating versioned ZIP packages
-11. Uploading the resulting artifacts or GitHub Release assets
+This corresponds to Windows 7. Compatibility should be retested whenever the compiler, MSYS2 environment, tiny-curl, wolfSSL, or build options change.
 
 ## Verification
 
-The generated binary can be checked with:
+Display the build configuration:
 
 ```console
-curl.exe --version
+curl.exe -V
 ```
 
-The output should show wolfSSL as the TLS backend.
+The default package should report approximately:
 
-Runtime dependencies can be inspected with:
+```text
+Protocols: http https
+Features: Largefile NTLM SSL threadsafe
+```
+
+`UnixSockets` should not appear. The default package should not report zlib. The Cookies/zlib package should report zlib.
+
+Inspect runtime DLL dependencies from an MSYS2 shell:
+
+```console
+ldd curl.exe
+```
+
+or inspect the PE import table:
 
 ```console
 objdump -p curl.exe
 ```
 
-or another PE dependency inspection tool.
+No third-party runtime DLL should be required.
 
-The expected result is that `curl.exe` only depends on Windows system DLLs and does not require external wolfSSL or MinGW runtime DLLs.
-
-HTTPS can be tested with:
+To inspect the available options:
 
 ```console
-curl.exe https://example.com/
+curl.exe --help all
 ```
 
-## Repository Structure
+The default package has Cookies disabled and cannot perform zlib content decoding. Depending on curl's command-line implementation, `--compressed` may still appear in help output even when zlib is unavailable; use `curl.exe -V` and an actual compressed response test to verify the difference. The Cookies/zlib package enables Cookie handling and zlib decoding.
 
-A typical repository layout is:
+## CA certificate bundle and HTTPS
+
+Keep `curl-ca-bundle.crt` beside `curl.exe` after extracting a package. It can also be selected explicitly:
+
+```console
+curl.exe --cacert curl-ca-bundle.crt https://example.com/
+```
+
+Some certificate chains may not validate with the current wolfSSL 5.9.2 build even when the CA bundle is found. A known symptom is:
+
+```text
+curl: (77) CA signer not available for verification
+```
+
+This has been reproduced with `https://www.baidu.com/`: explicitly selecting the bundled CA file and bypassing a local proxy did not resolve it, while Windows curl using Schannel succeeded. This indicates a wolfSSL certificate-chain compatibility limitation rather than a missing CA file or basic network failure.
+
+`-k` / `--insecure` bypasses certificate verification but should not be used for sensitive traffic.
+
+Some sites may return a JavaScript WAF or browser-check page even after HTTPS succeeds. That response is site behavior, not a curl TLS failure, and `-L` only follows HTTP redirects—not JavaScript redirects.
+
+## Repository structure
 
 ```text
 win-tiny-curl/
 ├── .github/
+│   ├── scripts/
+│   │   └── build.sh
 │   └── workflows/
-│       └── build.yml
+│       ├── build-x64.yml
+│       ├── build-x86.yml
+│       ├── build-x64-cookies-zlib.yml
+│       └── build-x86-cookies-zlib.yml
 ├── src/
 │   └── tiny-curl-8.4.0.tar.gz
-├── scripts/
-│   └── ...
+├── wolfssl-src
 ├── README.md
 └── LICENSE
 ```
 
-The exact tiny-curl source archive under `src/` may change as the project is updated to newer versions.
+Generated binaries are published by GitHub Actions and do not need to be committed to the repository.
 
-Generated binaries are not required to be stored in the repository. They are produced by GitHub Actions and published as build artifacts or GitHub Release assets.
+## Upstream projects
 
-## Upstream Projects
+- tiny-curl: <https://curl.se/tiny/>
+- wolfSSL: <https://github.com/wolfSSL/wolfssl>
+- CA Extract: <https://curl.se/docs/caextract.html>
 
-This repository provides Windows build automation and packaging for upstream tiny-curl and wolfSSL releases.
+## Licensing
 
-### tiny-curl
+The upstream components and bundled CA certificate data retain their respective licenses and attribution terms. Redistribution of generated binaries must comply with the licenses of tiny-curl, wolfSSL, and other linked components.
 
-https://curl.se/tiny/
-
-Current version used by this project:
-
-```text
-8.4.0
-```
-
-### wolfSSL
-
-https://github.com/wolfSSL/wolfssl
-
-Current version used by this project:
-
-```text
-5.9.2
-```
-
-The versions used by future builds may change.
-
-## License
-
-The build scripts, workflow files, and other original files in this repository may be licensed separately by this project.
-
-The upstream components retain their own licenses.
-
-### tiny-curl
-
-tiny-curl is distributed under the **GNU General Public License version 3 (GPLv3)**.
-
-### wolfSSL
-
-wolfSSL retains its applicable upstream licensing terms.
-
-### Generated Binaries
-
-The generated `curl.exe` binaries contain and/or link GPL-licensed software.
-
-Redistribution of the generated binaries must therefore comply with the applicable license requirements of tiny-curl and wolfSSL.
-
-The license used for this repository's own build scripts does not override the licenses of the upstream software.
-
-The bundled `curl-ca-bundle.crt` retains its own upstream licensing and attribution terms.
+The license applied to this repository's own automation does not override upstream licenses.
 
 ## Disclaimer
 
-This is an independent Windows build project.
-
-It is not an official curl, tiny-curl, or wolfSSL distribution.
-
-Issues related specifically to these Windows builds may be reported to this repository.
-
-Issues in tiny-curl or wolfSSL themselves should generally be reported to the appropriate upstream project.
+This is an independent Windows build and is not an official curl, tiny-curl, or wolfSSL distribution.
