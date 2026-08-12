@@ -33,6 +33,8 @@ curl-ca-bundle.crt
 
 The default package deliberately has no feature suffix. The optional package uses the `-cookies-zlib` suffix.
 
+The default package disables Cookies and zlib. The `cookies-zlib` package enables Cookies (`-b, --cookie`, `-c, --cookie-jar`, and `-j, --junk-session-cookies`) and zlib (`--compressed`).
+
 ## Supported functionality
 
 All builds provide:
@@ -53,8 +55,6 @@ The build disables:
 - the `--libcurl` command-line option
 - the threaded resolver
 - zstd and Brotli
-
-The default package additionally disables Cookies and zlib. The `cookies-zlib` package enables Cookies and zlib, including the `--compressed` option.
 
 Proxy support is retained.
 
