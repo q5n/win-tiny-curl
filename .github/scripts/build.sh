@@ -98,6 +98,7 @@ NM=gcc-nm \
     --enable-static \
     --disable-shared \
     --enable-curl=tiny \
+    --enable-altcertchains \
     --enable-opensslextra \
     --enable-md4 \
     --enable-des3 \
@@ -110,6 +111,14 @@ make -j"$(nproc)"
 log_step "Installing static wolfSSL"
 make install
 popd
+
+log_step "Verifying wolfSSL certificate-chain support"
+if ! grep -Eq '^[[:space:]]*#define[[:space:]]+WOLFSSL_ALT_CERT_CHAINS([[:space:]]+1)?[[:space:]]*$' \
+    "$prefix/include/wolfssl/options.h"; then
+  echo "ERROR: wolfSSL was built without alternate certificate-chain support." >&2
+  exit 1
+fi
+echo "  enabled: WOLFSSL_ALT_CERT_CHAINS"
 
 log_step "Verifying wolfSSL NTLM compatibility symbols"
 for symbol in \
